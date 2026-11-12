@@ -5,6 +5,8 @@
 # ==============================================================================
 
 bashio::log.info 'Reading configuration settings...'
+# Shows which repository and commit the library was installed from
+bashio::log.info "Library: $(pip freeze 2>/dev/null | grep -i '^bluetti')"
 
 MODE=$(bashio::config 'mode')
 HA_CONFIG=$(bashio::config 'ha_config')
