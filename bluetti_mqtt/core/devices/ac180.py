@@ -1,8 +1,21 @@
+from enum import Enum, unique
 from typing import List
 from ..commands import ReadHoldingRegisters
 from .bluetti_device import BluettiDevice
 from .struct import DeviceStruct
 
+@unique
+class LedMode(Enum):
+    OFF = 0
+    LOW = 1
+    HIGH = 2
+    SOS = 3
+
+@unique
+class ChargingMode(Enum):
+    STANDARD = 0
+    SILENT = 1
+    TURBO = 2
 
 class AC180(BluettiDevice):
     def __init__(self, address: str, sn: str):
@@ -27,6 +40,13 @@ class AC180(BluettiDevice):
         self.struct.add_uint_field('dc_input_power', 144)
         self.struct.add_uint_field('ac_input_power', 146)  #this is a guess because I didn't have a PV module handy to test
 
+        # Controls
+        self.struct.add_enum_field('led_mode', 2007, LedMode)
+        self.struct.add_bool_field('ac_output_on', 2011)
+        self.struct.add_bool_field('dc_output_on', 2012)
+        self.struct.add_enum_field('charging_mode', 2020, ChargingMode)
+        self.struct.add_bool_field('power_lifting_on', 2021)
+        
         #History
         # self.struct.add_decimal_field('power_generation', 154, 1)  # Total power generated since last reset (kwh)
         self.struct.add_decimal_field('power_generation', 1202, 1)  # Total power generated since last reset (kwh)
@@ -43,6 +63,7 @@ class AC180(BluettiDevice):
     def polling_commands(self) -> List[ReadHoldingRegisters]:
         return [
             ReadHoldingRegisters(100, 62),
+            ReadHoldingRegisters(2000, 67),
         ]
 
     @property
@@ -65,3 +86,7 @@ class AC180(BluettiDevice):
             ReadHoldingRegisters(6300, 52),
             ReadHoldingRegisters(7000, 5)
         ]
+
+    @property
+    def writable_ranges(self) -> List[range]:
+        return [range(2000, 2225)]
