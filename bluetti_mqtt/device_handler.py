@@ -6,7 +6,11 @@ from typing import Dict, List, cast
 
 from .bluetooth import BadConnectionError, MultiDeviceManager, ModbusError, ParseError, build_device
 from .bus import CommandMessage, EventBus, ParserMessage
-from .core import BluettiDevice, ReadHoldingRegisters
+from .core import BluettiDevice, ReadHoldingRegisters, WriteSingleRegister
+
+
+# Time to let the device apply a write before reading the register back
+WRITE_SETTLE_DELAY = 1.0
 
 
 class DeviceHandler:
@@ -15,6 +19,7 @@ class DeviceHandler:
         self.devices: Dict[str, BluettiDevice] = {}
         self.interval = interval
         self.bus = bus
+        self._refresh_tasks = set()
 
     async def run(self):
         loop = asyncio.get_running_loop()
@@ -35,6 +40,38 @@ class DeviceHandler:
         if self.manager.is_ready(msg.device.address):
             logging.debug(f'Performing command {msg.device}: {msg.command}')
             await self.manager.perform_nowait(msg.device.address, msg.command)
+
+            # State is otherwise only published on the next poll, which can
+            # be up to --interval seconds away. Until then Home Assistant
+            # still holds the old value and the switch snaps back.
+            if isinstance(msg.command, WriteSingleRegister):
+                task = asyncio.create_task(self._refresh_after_write(msg.device, msg.command))
+                self._refresh_tasks.add(task)
+                task.add_done_callback(self._refresh_tasks.discard)
+
+    async def _refresh_after_write(self, device: BluettiDevice, command: WriteSingleRegister):
+        """Read back the registers around a write so the new state is published now"""
+        try:
+            await asyncio.sleep(WRITE_SETTLE_DELAY)
+            if not self.manager.is_ready(device.address):
+                return
+
+            read = self._read_command_covering(device, command.address)
+            logging.debug(f'Refreshing {device} after {command} with {read}')
+            await self._poll_with_command(device, read)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logging.exception(f'Failed to refresh {device} after {command}')
+
+    @staticmethod
+    def _read_command_covering(device: BluettiDevice, address: int) -> ReadHoldingRegisters:
+        """Prefer a polling command that already covers the address, since
+        the device is known to answer those. Otherwise read the single register."""
+        for read in device.polling_commands:
+            if read.starting_address <= address < read.starting_address + read.quantity:
+                return read
+        return ReadHoldingRegisters(address, 1)
 
     async def _poll(self, address: str):
         while True:

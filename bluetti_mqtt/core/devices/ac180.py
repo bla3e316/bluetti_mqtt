@@ -5,13 +5,6 @@ from .bluetti_device import BluettiDevice
 from .struct import DeviceStruct
 
 @unique
-class LedMode(Enum):
-    OFF = 0
-    LOW = 1
-    HIGH = 2
-    SOS = 3
-
-@unique
 class ChargingMode(Enum):
     STANDARD = 0
     SILENT = 1
@@ -41,7 +34,6 @@ class AC180(BluettiDevice):
         self.struct.add_uint_field('ac_input_power', 146)  #this is a guess because I didn't have a PV module handy to test
 
         # Controls
-        self.struct.add_enum_field('led_mode', 2007, LedMode)
         self.struct.add_bool_field('ac_output_on', 2011)
         self.struct.add_bool_field('dc_output_on', 2012)
         self.struct.add_enum_field('charging_mode', 2020, ChargingMode)
